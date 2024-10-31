@@ -1,0 +1,12 @@
+{
+  "compilerOptions": {
+    "target": "ES6", // Define a versão do JavaScript de saída (ECMAScript 6).
+    "module": "commonjs", // Usa o sistema de módulos do Node.js.
+    "strict": false, // Habilita verificações de tipo mais rigorosas.
+    "esModuleInterop": true, // Para permitir importações de módulos CommonJS.
+    "skipLibCheck": true, // Ignora a checagem de tipos em arquivos de declaração de terceiros.
+    "outDir": "./dist", // Pasta de saída dos arquivos compilados.
+    "rootDir": "./src" // Pasta onde os arquivos TypeScript estarão.
+  },
+  "include": ["src/**/*"]
+}
