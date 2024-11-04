@@ -1,4 +1,5 @@
 import { Socket } from "socket.io";
+import { CallSession } from "./types/call";
 import { Room } from "./types/room";
 import { omit } from "./utils";
 
@@ -30,38 +31,58 @@ io.on("connection", (socket: Socket) => {
   console.log("A user connected: ", socket.id);
 
   socket.on("create-room", (room: Omit<Room, "users" | "socket">) => {
-    ROOMS[room.id] = { ...room, socket, users: [room.admin.id] };
+    ROOMS[room.id] = { ...room, socket, users: [room.admin.id], sessions: [] };
     socket.join(room.id);
     console.log("Room created: ", room);
   });
 
-  socket.on("request-join-room", (roomId: string, userId: string) => {
-    const room = ROOMS[roomId];
+  socket.on(
+    "request-join-room",
+    ({ roomId, userId }: { roomId: string; userId: string }) => {
+      const room = ROOMS[roomId];
 
-    console.log("Request to join room: ", { roomId, userId, room });
+      console.log("Request to join room: ", { roomId, userId, room });
 
-    if (!room) {
-      socket.send("Room not found");
-      return;
-    }
+      if (!room) {
+        socket.send("Room not found");
+        return;
+      }
 
-    if (room.users.includes(userId)) {
+      if (room.users.includes(userId)) {
+        socket.emit("already-inside-room", userId);
+        socket.emit(
+          "joined-room-successfully",
+          omit(room, ["socket", "users"])
+        );
+        return;
+      }
+
+      room.users.push(userId);
+      socket.join(roomId);
       room.socket.emit("new-user-joined-room", userId);
-      socket.emit("joined-room-successfully", omit(room, ["socket", "users"]));
-      return;
+      socket.emit(
+        "joined-room-successfully",
+        omit(room, ["socket", "users", "sessions"])
+      );
+      console.log("User joined room: ", { roomId, userId });
     }
-
-    room.users.push(userId);
-    socket.join(roomId);
-    room.socket.emit("new-user-joined-room", userId);
-    socket.emit("joined-room-successfully", omit(room, ["socket", "users"]));
-    console.log("User joined room: ", { roomId, userId });
-  });
+  );
 
   socket.on(
-    "share-peer-id",
-    (roomId: string, userId: string, peerId: string) => {
+    "share-call-session",
+    ({
+      roomId,
+      userId,
+      session,
+    }: {
+      roomId: string;
+      userId: string;
+      session: CallSession;
+    }) => {
       const room = ROOMS[roomId];
+
+      console.log("Share call session: ", { roomId, userId, session });
+
       if (!room) {
         socket.send("Room not found");
         return;
@@ -71,7 +92,13 @@ io.on("connection", (socket: Socket) => {
         socket.send("User not included in the room");
       }
 
-      socket.to(roomId).emit("peer-id-shared", peerId);
+      socket.emit(
+        "receive-all-room-sessions",
+        room.sessions?.filter((s) => s.id !== session.id)
+      );
+      if (!room.sessions.some((s) => s.id === session.id))
+        room.sessions.push(session);
+      socket.to(roomId).emit("receive-call-session", session);
     }
   );
 });
