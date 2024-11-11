@@ -5,7 +5,17 @@ export type TrackObject = {
   trackName: string;
 };
 
-export type CallSession = {
+export type CallUser = {
   id: string;
-  tracks: TrackObject[];
+  name: string;
+  joined: boolean;
+  speaking: boolean;
+  media?: {
+    audioEnabled: boolean;
+    cameraEnabled: boolean;
+    screenEnabled: boolean;
+    audioTracks?: TrackObject[];
+    videoTracks?: TrackObject[];
+  };
+  socketId: string;
 };

@@ -1,15 +1,11 @@
 import { Socket } from "socket.io";
-import { CallSession } from "./call";
+import { CallUser } from "./call";
 
 export type Room = {
   id: string;
   name: string;
-  admin: {
-    id: string;
-    name: string;
-  };
+  admin: CallUser;
   insertedAt: string;
-  users: string[];
+  users: CallUser[];
   socket: Socket;
-  sessions: CallSession[];
 };

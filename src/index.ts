@@ -1,5 +1,5 @@
 import { Socket } from "socket.io";
-import { CallSession } from "./types/call";
+import { CallUser } from "./types/call";
 import { Room } from "./types/room";
 import { omit } from "./utils";
 
@@ -28,28 +28,36 @@ app.get("/health", (_, res) => {
 });
 
 io.on("connection", (socket: Socket) => {
-  console.log("A user connected: ", socket.id);
+  let heartbeatCount = 0;
 
   socket.on("create-room", (room: Omit<Room, "users" | "socket">) => {
-    ROOMS[room.id] = { ...room, socket, users: [room.admin.id], sessions: [] };
+    ROOMS[room.id] = {
+      ...room,
+      socket,
+      users: [{ ...room.admin, socketId: socket.id }],
+    };
     socket.join(room.id);
-    console.log("Room created: ", room);
+    console.log("Room created: ", ROOMS[room.id]);
   });
 
   socket.on(
     "request-join-room",
-    ({ roomId, userId }: { roomId: string; userId: string }) => {
+    ({ roomId, user }: { roomId: string; user: CallUser }) => {
       const room = ROOMS[roomId];
 
-      console.log("Request to join room: ", { roomId, userId, room });
+      console.log("Request to join room: ", { roomId, user, room });
 
       if (!room) {
         socket.send("Room not found");
         return;
       }
 
-      if (room.users.includes(userId)) {
-        socket.emit("already-inside-room", userId);
+      const userInRoom = room.users?.some(
+        (u) => !!user?.id && u?.id === user.id
+      );
+
+      if (userInRoom) {
+        socket.emit("already-inside-room", { roomId, user });
         socket.emit(
           "joined-room-successfully",
           omit(room, ["socket", "users"])
@@ -57,50 +65,67 @@ io.on("connection", (socket: Socket) => {
         return;
       }
 
-      room.users.push(userId);
+      room.users.push({ ...user, socketId: socket.id });
       socket.join(roomId);
-      room.socket.emit("new-user-joined-room", userId);
-      socket.emit(
-        "joined-room-successfully",
-        omit(room, ["socket", "users", "sessions"])
-      );
-      console.log("User joined room: ", { roomId, userId });
+
+      if (room.socket?.id) room.socket.emit("new-user-joined-room", user);
+
+      socket.emit("joined-room-successfully", omit(room, ["socket", "users"]));
     }
   );
 
   socket.on(
-    "share-call-session",
-    ({
-      roomId,
-      userId,
-      session,
-    }: {
-      roomId: string;
-      userId: string;
-      session: CallSession;
-    }) => {
+    "update-call-user",
+    ({ roomId, userState }: { roomId: string; userState: CallUser }) => {
       const room = ROOMS[roomId];
-
-      console.log("Share call session: ", { roomId, userId, session });
 
       if (!room) {
         socket.send("Room not found");
         return;
       }
 
-      if (!room.users.includes(userId)) {
-        socket.send("User not included in the room");
+      const userInRoom = room.users?.some(
+        (u) => !!userState?.id && u?.id === userState.id
+      );
+
+      if (!userInRoom) {
+        return socket.send("User not included in the room");
       }
 
-      socket.emit(
-        "receive-all-room-sessions",
-        room.sessions?.filter((s) => s.id !== session.id)
-      );
-      if (!room.sessions.some((s) => s.id === session.id))
-        room.sessions.push(session);
-      socket.to(roomId).emit("receive-call-session", session);
+      const userIndex = room.users.findIndex((u) => u.id === userState.id);
+      room.users[userIndex] = userState;
+
+      io.to(roomId).emit("user-updated", userState);
     }
   );
+
+  socket.on("disconnect", (reason) => {
+    Object.keys(ROOMS).forEach((roomId) => {
+      const room = ROOMS[roomId];
+      if (room.socket.id === socket.id) {
+        delete ROOMS[roomId];
+      } else {
+        ROOMS[roomId].users = room.users.filter(
+          (u) => u.socketId !== socket.id
+        );
+        socket.leave(roomId);
+      }
+    });
+    console.log(`Socket ${socket.id} disconnected: ${reason}`);
+  });
+
+  socket.on("heartbeat", (roomId: string) => {
+    if (heartbeatCount === 2) {
+      const room = ROOMS[roomId];
+      room.socket.emit(
+        "room-state",
+        room?.id ? omit(room, ["socket"]) : { error: "Room not found" }
+      );
+      heartbeatCount = 0;
+    } else {
+      heartbeatCount++;
+    }
+  });
 });
 
 server.listen(PORT, HOST, () => {
