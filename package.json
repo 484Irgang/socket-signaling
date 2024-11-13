@@ -11,8 +11,10 @@
   "license": "ISC",
   "description": "",
   "dependencies": {
+    "@reduxjs/toolkit": "^2.3.0",
     "cors": "^2.8.5",
     "express": "^4.21.1",
+    "immer": "^10.1.1",
     "socket.io": "^4.8.0"
   },
   "devDependencies": {

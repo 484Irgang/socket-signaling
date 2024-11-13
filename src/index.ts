@@ -1,14 +1,18 @@
 import { Socket } from "socket.io";
+import {
+  addRoom,
+  joinRoom,
+  removeUserSocketFromRooms,
+  store,
+  updateCallUser,
+} from "./store";
 import { CallUser } from "./types/call";
 import { Room } from "./types/room";
-import { omit } from "./utils";
 
 const http = require("http");
 const express = require("express");
 const { Server } = require("socket.io");
 const path = require("path");
-
-const ROOMS: { [roomId: string]: Room } = {};
 
 const app = express();
 const server = http.createServer(app);
@@ -28,22 +32,21 @@ app.get("/health", (_, res) => {
 });
 
 io.on("connection", (socket: Socket) => {
-  let heartbeatCount = 0;
+  let heartbeatCount: Record<string, number> = {};
 
   socket.on("create-room", (room: Omit<Room, "users" | "socket">) => {
-    ROOMS[room.id] = {
+    const newRoom = {
       ...room,
-      socket,
       users: [{ ...room.admin, socketId: socket.id }],
     };
     socket.join(room.id);
-    console.log("Room created: ", ROOMS[room.id]);
+    store.dispatch(addRoom(newRoom));
   });
 
   socket.on(
     "request-join-room",
     ({ roomId, user }: { roomId: string; user: CallUser }) => {
-      const room = ROOMS[roomId];
+      const room = store.getState().rooms[roomId];
 
       console.log("Request to join room: ", { roomId, user, room });
 
@@ -58,72 +61,59 @@ io.on("connection", (socket: Socket) => {
 
       if (userInRoom) {
         socket.emit("already-inside-room", { roomId, user });
-        socket.emit(
-          "joined-room-successfully",
-          omit(room, ["socket", "users"])
-        );
+        socket.emit("joined-room-successfully", room);
         return;
       }
 
-      room.users.push({ ...user, socketId: socket.id });
       socket.join(roomId);
+      store.dispatch(
+        joinRoom({ roomId, user: { ...user, socketId: socket.id } })
+      );
 
-      if (room.socket?.id) room.socket.emit("new-user-joined-room", user);
-
-      socket.emit("joined-room-successfully", omit(room, ["socket", "users"]));
+      socket.emit("joined-room-successfully", room);
     }
   );
 
   socket.on(
     "update-call-user",
-    ({ roomId, userState }: { roomId: string; userState: CallUser }) => {
-      const room = ROOMS[roomId];
+    ({ roomId, user }: { roomId: string; user: CallUser }) => {
+      const room = store.getState().rooms[roomId];
 
-      if (!room) {
+      if (!room?.id) {
         socket.send("Room not found");
         return;
       }
 
+      console.log("update user", { room, user });
+
       const userInRoom = room.users?.some(
-        (u) => !!userState?.id && u?.id === userState.id
+        (u) => !!user?.id && u?.id === user.id
       );
 
       if (!userInRoom) {
         return socket.send("User not included in the room");
       }
 
-      const userIndex = room.users.findIndex((u) => u.id === userState.id);
-      room.users[userIndex] = userState;
-
-      io.to(roomId).emit("user-updated", userState);
+      store.dispatch(updateCallUser({ roomId, user }));
+      io.to(roomId).emit("user-updated", user);
     }
   );
 
   socket.on("disconnect", (reason) => {
-    Object.keys(ROOMS).forEach((roomId) => {
-      const room = ROOMS[roomId];
-      if (room.socket.id === socket.id) {
-        delete ROOMS[roomId];
-      } else {
-        ROOMS[roomId].users = room.users.filter(
-          (u) => u.socketId !== socket.id
-        );
-        socket.leave(roomId);
-      }
-    });
+    store.dispatch(removeUserSocketFromRooms({ socketId: socket.id }));
     console.log(`Socket ${socket.id} disconnected: ${reason}`);
   });
 
   socket.on("heartbeat", (roomId: string) => {
-    if (heartbeatCount === 2) {
-      const room = ROOMS[roomId];
-      room.socket.emit(
-        "room-state",
-        room?.id ? omit(room, ["socket"]) : { error: "Room not found" }
-      );
-      heartbeatCount = 0;
+    if (!heartbeatCount[roomId]) {
+      heartbeatCount[roomId] = 0;
+    }
+    if (heartbeatCount[roomId] === 2) {
+      const room = store.getState().rooms[roomId];
+      socket.emit("room-state", room?.id ? room : { error: "Room not found" });
+      heartbeatCount[roomId] = 0;
     } else {
-      heartbeatCount++;
+      heartbeatCount[roomId]++;
     }
   });
 });

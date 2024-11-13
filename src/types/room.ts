@@ -1,4 +1,3 @@
-import { Socket } from "socket.io";
 import { CallUser } from "./call";
 
 export type Room = {
@@ -7,5 +6,4 @@ export type Room = {
   admin: CallUser;
   insertedAt: string;
   users: CallUser[];
-  socket: Socket;
 };
