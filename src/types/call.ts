@@ -14,8 +14,8 @@ export type CallUser = {
     audioEnabled: boolean;
     cameraEnabled: boolean;
     screenEnabled: boolean;
-    audioTracks?: TrackObject[];
-    videoTracks?: TrackObject[];
+    sessionTracks?: TrackObject[];
   };
   socketId: string;
+  sessionId?: string;
 };

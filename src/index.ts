@@ -95,7 +95,7 @@ io.on("connection", (socket: Socket) => {
       }
 
       store.dispatch(updateCallUser({ roomId, user }));
-      io.to(roomId).emit("user-updated", user);
+      if (user.joined) io.to(roomId).emit("user-updated", user);
     }
   );
 
