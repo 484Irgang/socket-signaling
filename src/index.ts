@@ -84,8 +84,6 @@ io.on("connection", (socket: Socket) => {
         return;
       }
 
-      console.log("update user", { room, user });
-
       const userInRoom = room.users?.some(
         (u) => !!user?.id && u?.id === user.id
       );
@@ -100,6 +98,14 @@ io.on("connection", (socket: Socket) => {
   );
 
   socket.on("disconnect", (reason) => {
+    const rooms = store.getState().rooms;
+    Object.values(rooms).forEach((room) => {
+      const user = room.users.find((u) => u.socketId === socket.id);
+      if (user) {
+        io.to(room.id).emit("user-disconnected", user);
+      }
+    });
+
     store.dispatch(removeUserSocketFromRooms({ socketId: socket.id }));
     console.log(`Socket ${socket.id} disconnected: ${reason}`);
   });
