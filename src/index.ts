@@ -84,16 +84,17 @@ io.on("connection", (socket: Socket) => {
         return;
       }
 
-      const userInRoom = room.users?.some(
+      const userInRoom = room.users?.find(
         (u) => !!user?.id && u?.id === user.id
       );
 
-      if (!userInRoom) {
+      if (!userInRoom?.id) {
         return socket.send("User not included in the room");
       }
 
       store.dispatch(updateCallUser({ roomId, user }));
-      if (user.joined) io.to(roomId).emit("user-updated", user);
+      if (user.joined || userInRoom.joined)
+        io.to(roomId).emit("user-updated", user);
     }
   );
 
