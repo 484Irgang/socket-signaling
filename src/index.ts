@@ -95,6 +95,13 @@ io.on("connection", (socket: Socket) => {
       store.dispatch(updateCallUser({ roomId, user }));
       if (user.joined || userInRoom.joined)
         io.to(roomId).emit("user-updated", user);
+
+      const userJoinedInRoom = !userInRoom.joined && user.joined;
+      if (userJoinedInRoom)
+        socket.emit(
+          "room-state",
+          room?.id ? room : { error: "Room not found" }
+        );
     }
   );
 
